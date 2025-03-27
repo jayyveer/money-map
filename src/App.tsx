@@ -3,6 +3,7 @@ import { AuthForm } from './components/auth/AuthForm'
 import { DashboardLayout } from './components/layout/DashboardLayout'
 import { EPFSection } from './components/dashboard/EPFSection'
 import { InvestmentSection } from './components/dashboard/InvestmentSection'
+import { ExpensesSection } from './components/dashboard/ExpensesSection'
 
 function App() {
   return (
@@ -13,7 +14,7 @@ function App() {
           <Route index element={<div>Dashboard Overview</div>} />
           <Route path="epf" element={<EPFSection />} />
           <Route path="investments" element={<InvestmentSection />} />
-          <Route path="expenses" element={<div>Expenses Section</div>} />
+          <Route path="expenses" element={<ExpensesSection />} />
         </Route>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
       </Routes>

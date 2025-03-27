@@ -1,92 +1,149 @@
-import { useState } from 'react'
-import { format } from 'date-fns'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { api } from '@/lib/api'
+import { useEffect, useState } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/lib/store'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { format, parse, isAfter, startOfMonth, getDate } from 'date-fns'
+
+interface EPFContribution {
+  id: number
+  user_id: string
+  amount: number
+  date: string
+  created_at: string
+}
 
 export function EPFSection() {
-  const [contributions, setContributions] = useState([])
+  const [contributions, setContributions] = useState<EPFContribution[]>([])
+  const [totalContribution, setTotalContribution] = useState(0)
+  const [isLoading, setIsLoading] = useState(true)
   const { user } = useAuthStore()
 
-  const addContribution = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const form = e.target as HTMLFormElement
-    const formData = new FormData(form)
-    
-    const contribution = {
-      date: formData.get('date'),
-      amount: parseFloat(formData.get('amount') as string),
-      notes: formData.get('notes')
-    }
+  // Function to fetch EPF contributions
+  const fetchContributions = async () => {
+    if (!user) return
 
-    if (user) {
-      const newContribution = await api.epf.add(user.id, contribution)
-      setContributions([newContribution, ...contributions])
-      form.reset()
+    try {
+      setIsLoading(true)
+      const { data, error } = await supabase
+        .from('epf_contributions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('date', { ascending: true })
+
+      if (error) throw error
+
+      setContributions(data || [])
+      
+      // Calculate total
+      const total = (data || []).reduce((sum, item) => sum + (item.amount || 0), 0)
+      setTotalContribution(total)
+    } catch (error) {
+      console.error('Error fetching EPF contributions:', error)
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  return (
-    <div className="space-y-6">
-      <div className="bg-white p-6 rounded-lg shadow dark:bg-gray-800">
-        <h2 className="text-2xl font-bold mb-4">EPF Contributions</h2>
+  // Function to check and add automatic contribution if needed
+  const addAutomaticContribution = async () => {
+    if (!user) return
+    
+    const today = new Date()
+    const currentMonth = startOfMonth(today)
+    const isAfterFifth = getDate(today) >= 5
+    
+    // Check if we should add an automatic contribution (on or after the 5th)
+    if (!isAfterFifth) return
+    
+    // Check if there's already a contribution for this month
+    const hasContributionThisMonth = contributions.some(contribution => {
+      const contributionDate = new Date(contribution.date)
+      return contributionDate.getMonth() === currentMonth.getMonth() && 
+             contributionDate.getFullYear() === currentMonth.getFullYear()
+    })
+    
+    if (!hasContributionThisMonth) {
+      try {
+        const newContribution = {
+          user_id: user.id,
+          amount: 3600,
+          date: currentMonth.toISOString().split('T')[0], // Format as YYYY-MM-DD
+        }
         
-        <form onSubmit={addContribution} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-sm font-medium mb-1">Date</label>
-              <input
-                type="date"
-                name="date"
-                required
-                className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary focus:ring-opacity-50"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Amount</label>
-              <input
-                type="number"
-                name="amount"
-                step="0.01"
-                required
-                className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary focus:ring-opacity-50"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">Notes</label>
-              <input
-                type="text"
-                name="notes"
-                className="w-full rounded-md border-gray-300 shadow-sm focus:border-primary focus:ring focus:ring-primary focus:ring-opacity-50"
-              />
-            </div>
-          </div>
-          <button
-            type="submit"
-            className="bg-primary text-white px-4 py-2 rounded-md hover:bg-primary/90"
-          >
-            Add Contribution
-          </button>
-        </form>
-      </div>
+        const { error } = await supabase
+          .from('epf_contributions')
+          .insert([newContribution])
+          
+        if (error) throw error
+        
+        // Refresh contributions after adding
+        await fetchContributions()
+      } catch (error) {
+        console.error('Error adding automatic contribution:', error)
+      }
+    }
+  }
 
-      <div className="bg-white p-6 rounded-lg shadow dark:bg-gray-800">
-        <h3 className="text-xl font-semibold mb-4">Contribution History</h3>
-        <div className="h-[300px]">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={contributions}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis
-                dataKey="date"
-                tickFormatter={(date) => format(new Date(date), 'MMM yyyy')}
-              />
-              <YAxis />
-              <Tooltip />
-              <Line type="monotone" dataKey="amount" stroke="#2563eb" />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
+  useEffect(() => {
+    fetchContributions()
+  }, [user])
+  
+  useEffect(() => {
+    if (contributions.length > 0) {
+      addAutomaticContribution()
+    }
+  }, [contributions, user])
+
+  // Format data for the chart
+  const chartData = contributions.map(contribution => ({
+    month: format(new Date(contribution.date), 'MMM yyyy'),
+    amount: contribution.amount
+  }))
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>EPF Contributions</CardTitle>
+          <CardDescription>Track your Employee Provident Fund contributions</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="mb-6">
+            <h3 className="text-xl font-bold">Total EPF Contribution</h3>
+            <p className="text-3xl font-bold text-primary">
+              {isLoading ? 'Loading...' : `RM ${totalContribution.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            </p>
+          </div>
+          
+          <div className="h-80 mt-6">
+            {isLoading ? (
+              <div className="flex h-full items-center justify-center">Loading chart data...</div>
+            ) : chartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis 
+                    dataKey="month" 
+                    angle={-45} 
+                    textAnchor="end" 
+                    height={70}
+                  />
+                  <YAxis />
+                  <Tooltip 
+                    formatter={(value) => [`RM ${Number(value).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Amount']}
+                  />
+                  <Bar dataKey="amount" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex h-full items-center justify-center">
+                No contribution data available. Data will be automatically added on the 5th of each month.
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
