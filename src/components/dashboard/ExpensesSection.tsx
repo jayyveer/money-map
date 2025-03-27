@@ -450,19 +450,19 @@ export function ExpensesSection() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handlePreviousMonth}
-              >
+              onClick={handlePreviousMonth}
+            >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
-              <h2 className="text-xl font-bold px-4">
-                {format(selectedMonth, "MMMM yyyy")}
-              </h2>
+            <h2 className="text-xl font-bold px-4">
+              {format(selectedMonth, "MMMM yyyy")}
+            </h2>
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleNextMonth}
-                disabled={selectedMonth >= new Date()}
-              >
+              onClick={handleNextMonth}
+              disabled={selectedMonth >= new Date()}
+            >
                 <ArrowRight className="h-4 w-4" />
               </Button>
             </div>
@@ -742,9 +742,9 @@ export function ExpensesSection() {
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                 <div>
                   <CardTitle>Spending Trends</CardTitle>
-                  <CardDescription>
+              <CardDescription>
                     {format(selectedMonth, "MMMM yyyy")} spending patterns
-                  </CardDescription>
+              </CardDescription>
                 </div>
                 <Tabs 
                   value={activeTimeframe}
