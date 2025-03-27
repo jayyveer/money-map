@@ -91,42 +91,35 @@ export function InvestmentSection() {
         .from("sip_investments")
         .select("*")
         .eq("user_id", user.id)
-        .order("created_at", { ascending: true });
+        .order("start_date", { ascending: false }); // Order by start_date descending to get latest first
 
       if (error) throw error;
+      
+      console.log("Raw SIP data:", data);
+      
+      // Group SIPs by fund_name and take only the latest one for each fund
+      const latestSipsByFund: Record<string, SIPInvestment> = {};
+      
+      data?.forEach(sip => {
+        // If we haven't seen this fund yet, or if this SIP is newer than what we have
+        if (!latestSipsByFund[sip.fund_name] || 
+            new Date(sip.start_date) > new Date(latestSipsByFund[sip.fund_name].start_date)) {
+          latestSipsByFund[sip.fund_name] = sip;
+        }
+      });
+      
+      // Get the array of latest SIPs
+      const latestSips = Object.values(latestSipsByFund);
+      console.log("Latest SIPs by fund:", latestSips);
+      
+      // Set the SIP investments state to all SIPs for display purposes
       setSipInvestments(data || []);
       
-      // Calculate monthly investment amount
-      const currentDate = new Date();
+      // Calculate monthly investment amount from latest SIPs only
+      const totalMonthlyAmount = latestSips.reduce((sum, sip) => sum + sip.amount, 0);
+      console.log("Total monthly SIP amount (latest only):", totalMonthlyAmount);
       
-      // Group SIPs by fund_name to get the latest active SIP for each fund
-      const latestActiveSips = data?.reduce((result, sip) => {
-        const startDate = parseISO(sip.start_date);
-        const endDate = sip.end_date ? parseISO(sip.end_date) : null;
-        
-        // Check if SIP is active for current date
-        const isActive = isAfter(currentDate, startDate) && 
-                        (!endDate || isBefore(currentDate, endDate));
-        
-        if (isActive) {
-          // If we don't have this fund yet, or this SIP is newer than what we have
-          if (!result[sip.fund_name] || 
-              isAfter(parseISO(sip.start_date), parseISO(result[sip.fund_name].start_date))) {
-            result[sip.fund_name] = sip;
-          }
-        }
-        
-        return result;
-      }, {} as Record<string, SIPInvestment>);
-      
-      // Sum up the amounts of all active SIPs
-      const activeMonthlyAmount = Object.values(latestActiveSips || {})
-        .reduce((sum, sip) => sum + sip.amount, 0);
-      
-      console.log("Active SIPs:", Object.values(latestActiveSips || {}));
-      console.log("Monthly SIP total:", activeMonthlyAmount);
-      
-      setMonthlyInvestment(activeMonthlyAmount);
+      setMonthlyInvestment(totalMonthlyAmount);
     } catch (error) {
       console.error("Error fetching SIP investments:", error);
     }
