@@ -5,6 +5,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  CardFooter,
 } from "@/components/ui/card";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/lib/store";
@@ -16,8 +17,14 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  LineChart, 
+  Line,
+  AreaChart,
+  Area,
 } from "recharts";
-import { format, parse, isAfter, startOfMonth, getDate } from "date-fns";
+import { format, parse, isAfter, startOfMonth, getDate, subMonths, parseISO } from "date-fns";
+import { Loader } from "@/components/ui/loader";
+import { BadgePlus, TrendingUp, Wallet, Calendar } from "lucide-react";
 
 interface EPFContribution {
   id: number;
@@ -114,46 +121,122 @@ export function EPFSection() {
     }
   }, [contributions, user]);
 
-  // Format data for the chart
-  const chartData = contributions.map((contribution) => ({
-    month: format(new Date(contribution.date), "MMM yyyy"),
-    amount: contribution.amount,
-  }));
+  // Get cumulative data for chart
+  const getCumulativeChartData = () => {
+    let runningTotal = 0;
+    return [...contributions]
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+      .map((contribution) => {
+        runningTotal += contribution.amount;
+        return {
+          month: format(new Date(contribution.date), "MMM yyyy"),
+          amount: contribution.amount,
+          cumulative: runningTotal,
+        };
+      });
+  };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Summary cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-100 dark:border-blue-800">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-400 flex items-center gap-2">
+              <Wallet className="h-4 w-4" />
+              Total EPF Contribution
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-blue-700 dark:text-blue-400">
+              {isLoading ? (
+                <Loader />
+              ) : (
+                `₹ ${totalContribution.toLocaleString("en-MY", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}`
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-900/20 dark:to-green-900/20 border-emerald-100 dark:border-emerald-800">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-emerald-700 dark:text-emerald-400 flex items-center gap-2">
+              <TrendingUp className="h-4 w-4" />
+              Monthly Contribution
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-emerald-700 dark:text-emerald-400">
+              {isLoading ? (
+                <Loader />
+              ) : contributions.length > 0 ? (
+                `₹ 3,600.00`
+              ) : (
+                `₹ 0.00`
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20 border-purple-100 dark:border-purple-800">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-purple-700 dark:text-purple-400 flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              Total Duration
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-purple-700 dark:text-purple-400">
+              {isLoading ? (
+                <Loader />
+              ) : contributions.length > 0 ? (
+                `${contributions.length} Months`
+              ) : (
+                `0 Months`
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main visualization card */}
       <Card>
         <CardHeader>
-          <CardTitle>EPF Contributions</CardTitle>
-          <CardDescription>
-            Track your Employee Provident Fund contributions
-          </CardDescription>
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+            <div>
+              <CardTitle>EPF Contributions Over Time</CardTitle>
+              <CardDescription>
+                Track your monthly and cumulative contributions
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="mb-6">
-            <h3 className="text-xl font-bold">Total EPF Contribution</h3>
-            <p className="text-3xl font-bold text-primary">
-              {isLoading
-                ? "Loading..."
-                : `₹ ${totalContribution.toLocaleString("en-MY", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}`}
-            </p>
-          </div>
-
-          <div className="h-80 mt-6">
+          <div className="h-80">
             {isLoading ? (
               <div className="flex h-full items-center justify-center">
-                Loading chart data...
+                <Loader />
               </div>
-            ) : chartData.length > 0 ? (
+            ) : contributions.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={chartData}
+                <AreaChart
+                  data={getCumulativeChartData()}
                   margin={{ top: 20, right: 30, left: 20, bottom: 40 }}
                 >
-                  <CartesianGrid strokeDasharray="3 3" />
+                  <defs>
+                    <linearGradient id="colorAmount" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="colorCumulative" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis
                     dataKey="month"
                     angle={-45}
@@ -170,17 +253,40 @@ export function EPFSection() {
                       "Amount",
                     ]}
                   />
-                  <Bar dataKey="amount" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                </BarChart>
+                  <Area
+                    type="monotone"
+                    dataKey="cumulative"
+                    stroke="#06b6d4"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#colorCumulative)"
+                    name="Cumulative"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="amount"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#colorAmount)"
+                    name="Monthly"
+                  />
+                </AreaChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex h-full items-center justify-center">
-                No contribution data available. Data will be automatically added
-                on the 5th of each month.
+              <div className="flex h-full items-center justify-center text-center p-6 text-gray-500">
+                <div>
+                  <p className="mb-4">No contribution data available yet.</p>
+                  <p className="text-sm">Data will be automatically added on the 5th of each month.</p>
+                </div>
               </div>
             )}
           </div>
         </CardContent>
+        <CardFooter className="flex flex-col sm:flex-row items-center justify-between text-sm text-gray-500 border-t pt-4">
+          <div>EPF = Employee Provident Fund</div>
+          <div>Contributions are made monthly on the 5th</div>
+        </CardFooter>
       </Card>
     </div>
   );

@@ -33,6 +33,7 @@ import {
   Cell,
 } from "recharts";
 import { Edit, Plus, Check, X, ArrowUp } from "lucide-react";
+import { Loader } from "@/components/ui/loader";
 
 // Define interfaces based on your database schema
 interface SIPInvestment {
@@ -500,7 +501,7 @@ export function InvestmentSection() {
             <CardContent>
               {isLoading ? (
                 <div className="flex items-center justify-center h-64">
-                  Loading...
+                  <Loader />
                 </div>
               ) : fundDistribution.length > 0 ? (
                 <div className="h-64">
@@ -512,6 +513,7 @@ export function InvestmentSection() {
                         cy="50%"
                         labelLine={false}
                         outerRadius={80}
+                        innerRadius={40}
                         fill="#8884d8"
                         dataKey="value"
                         nameKey="name"
@@ -532,7 +534,7 @@ export function InvestmentSection() {
                           "Amount",
                         ]}
                       />
-                      <Legend />
+                      <Legend layout="vertical" align="right" verticalAlign="middle" />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
