@@ -4,6 +4,7 @@ import { DashboardLayout } from './components/layout/DashboardLayout'
 import { EPFSection } from './components/dashboard/EPFSection'
 import { InvestmentSection } from './components/dashboard/InvestmentSection'
 import { ExpensesSection } from './components/dashboard/ExpensesSection'
+import { BankSection } from './components/dashboard/BankSection'
 import { DashboardOverview } from './components/dashboard/DashboardOverview'
 
 function App() {
@@ -23,6 +24,7 @@ function App() {
             <Route path="epf" element={<EPFSection />} />
             <Route path="investments" element={<InvestmentSection />} />
             <Route path="expenses" element={<ExpensesSection />} />
+            <Route path="banks" element={<BankSection />} />
           </Route>
 
           {/* Redirect root to dashboard */}

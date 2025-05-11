@@ -1,24 +1,47 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
 import { Wallet, LogOut, PieChart, Landmark, TrendingUp, CreditCard } from 'lucide-react'
 import { useAuthStore } from '@/lib/store'
 import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/api'
 
 export function DashboardLayout() {
   const navigate = useNavigate()
   const { user, setUser, signOut } = useAuthStore()
+  const hasCheckedEntries = useRef(false)
+
+  // Check for missing monthly entries
+  const checkMonthlyEntries = async (userId: string) => {
+    if (!userId || hasCheckedEntries.current) return
+
+    try {
+      hasCheckedEntries.current = true
+      console.log('Checking for missing monthly entries...')
+      const result = await api.checkMonthlyEntries(userId)
+
+      if (result.epfAdded || result.investmentsAdded) {
+        console.log('Added missing entries:', result)
+      }
+    } catch (error) {
+      console.error('Error checking monthly entries:', error)
+    }
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
-      if (!session) {
+      if (session) {
+        checkMonthlyEntries(session.user.id)
+      } else {
         navigate('/login')
       }
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
-      if (!session) {
+      if (session) {
+        checkMonthlyEntries(session.user.id)
+      } else {
         navigate('/login')
       }
     })
@@ -96,6 +119,15 @@ export function DashboardLayout() {
               >
                 <CreditCard className="w-5 h-5 text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white" />
                 <span className="ml-3">Expenses</span>
+              </a>
+            </li>
+            <li>
+              <a
+                href="/dashboard/banks"
+                className="flex items-center p-2 text-gray-900 rounded-lg dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 group"
+              >
+                <Landmark className="w-5 h-5 text-gray-500 transition duration-75 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-white" />
+                <span className="ml-3">Bank Accounts</span>
               </a>
             </li>
           </ul>

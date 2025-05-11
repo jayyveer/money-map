@@ -7,6 +7,15 @@ import {
   CardTitle,
   CardFooter,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/lib/store";
 import {
@@ -18,6 +27,8 @@ import {
   getDate,
   addMonths,
   isSameMonth,
+  getMonth,
+  getYear,
 } from "date-fns";
 import {
   LineChart,
@@ -32,7 +43,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { Edit, Plus, Check, X, ArrowUp } from "lucide-react";
+import { Edit, Plus, Check, X, ArrowUp, Ban } from "lucide-react";
 import { Loader } from "@/components/ui/loader";
 
 // Define interfaces based on your database schema
@@ -77,10 +88,10 @@ export function InvestmentSection() {
   const [fundDistribution, setFundDistribution] = useState<
     { name: string; value: number }[]
   >([]);
+  const [isSkipMonthDialogOpen, setIsSkipMonthDialogOpen] = useState(false);
   const { user } = useAuthStore();
 
-  // Use refs to track if we've already checked for automatic entries this session
-  const hasCheckedAutoEntries = useRef(false);
+  // Use ref to track initial mount
   const isInitialMount = useRef(true);
 
   // Function to fetch SIP investments
@@ -95,31 +106,31 @@ export function InvestmentSection() {
         .order("start_date", { ascending: false }); // Order by start_date descending to get latest first
 
       if (error) throw error;
-      
+
       console.log("Raw SIP data:", data);
-      
+
       // Group SIPs by fund_name and take only the latest one for each fund
       const latestSipsByFund: Record<string, SIPInvestment> = {};
-      
+
       data?.forEach(sip => {
         // If we haven't seen this fund yet, or if this SIP is newer than what we have
-        if (!latestSipsByFund[sip.fund_name] || 
+        if (!latestSipsByFund[sip.fund_name] ||
             new Date(sip.start_date) > new Date(latestSipsByFund[sip.fund_name].start_date)) {
           latestSipsByFund[sip.fund_name] = sip;
         }
       });
-      
+
       // Get the array of latest SIPs
       const latestSips = Object.values(latestSipsByFund);
       console.log("Latest SIPs by fund:", latestSips);
-      
+
       // Set the SIP investments state to all SIPs for display purposes
       setSipInvestments(data || []);
-      
+
       // Calculate monthly investment amount from latest SIPs only
       const totalMonthlyAmount = latestSips.reduce((sum, sip) => sum + sip.amount, 0);
       console.log("Total monthly SIP amount (latest only):", totalMonthlyAmount);
-      
+
       setMonthlyInvestment(totalMonthlyAmount);
     } catch (error) {
       console.error("Error fetching SIP investments:", error);
@@ -170,70 +181,75 @@ export function InvestmentSection() {
     }
   };
 
-  // Function to check and add automatic SIP entries
-  const addAutomaticSipEntries = async () => {
-    if (!user || !sipInvestments.length || hasCheckedAutoEntries.current)
-      return;
+  // Function to get active SIPs
+  const getActiveSIPs = () => {
+    return sipInvestments.filter(
+      (sip) => !sip.end_date || isAfter(parseISO(sip.end_date), new Date())
+    );
+  };
 
-    // Mark that we've checked for auto entries this session
-    hasCheckedAutoEntries.current = true;
+  // Function to skip current month's investment
+  const skipCurrentMonthInvestment = async () => {
+    if (!user) return;
 
-    const today = new Date();
-    const currentMonth = startOfMonth(today);
-    const isAfter25th = getDate(today) >= 25;
+    try {
+      setIsLoading(true);
 
-    // Only proceed if it's on or after the 25th
-    if (!isAfter25th) return;
+      // Get current month and year
+      const today = new Date();
+      const currentMonth = getMonth(today);
+      const currentYear = getYear(today);
 
-    let entriesAdded = false;
+      // Create a date for the 25th of current month
+      const skipDate = new Date(currentYear, currentMonth, 25);
+      const formattedDate = skipDate.toISOString().split('T')[0];
 
-    // For each active SIP, check if there's an entry for this month
-    for (const sip of sipInvestments) {
-      const startDate = parseISO(sip.start_date);
-      const endDate = sip.end_date ? parseISO(sip.end_date) : null;
+      // Get active SIPs
+      const activeSIPs = getActiveSIPs();
 
-      // Skip if SIP is not active for current month
-      if (
-        isBefore(currentMonth, startDate) ||
-        (endDate && isAfter(currentMonth, endDate))
-      ) {
-        continue;
-      }
-
-      // Check if there's already an investment entry for this SIP this month
-      const hasEntryThisMonth = investments.some(
-        (inv) =>
+      // Check if we already have entries for this month
+      const hasCurrentMonthEntries = activeSIPs.some(sip => {
+        return investments.some(inv =>
           inv.sip_investment_id === sip.id &&
-          isSameMonth(parseISO(inv.date), currentMonth)
-      );
+          getMonth(parseISO(inv.date)) === currentMonth &&
+          getYear(parseISO(inv.date)) === currentYear
+        );
+      });
 
-      if (!hasEntryThisMonth) {
-        try {
-          const newInvestment = {
-            user_id: user.id,
-            sip_investment_id: sip.id,
-            type: "SIP" as const,
-            name: sip.fund_name,
-            amount: sip.amount,
-            date: today.toISOString().split("T")[0], // Format as YYYY-MM-DD
-            notes: "Automatically added monthly SIP investment",
-          };
-
-          const { error } = await supabase
-            .from("investments")
-            .insert([newInvestment]);
-
-          if (error) throw error;
-          entriesAdded = true;
-        } catch (error) {
-          console.error("Error adding automatic SIP entry:", error);
-        }
+      if (hasCurrentMonthEntries) {
+        console.log("Already have entries for this month");
+        setIsSkipMonthDialogOpen(false);
+        return;
       }
-    }
 
-    // Only refresh investments if we actually added entries
-    if (entriesAdded) {
-      await fetchInvestments();
+      // Create zero-amount entries for all active SIPs
+      const skippedEntries = activeSIPs.map(sip => ({
+        user_id: user.id,
+        sip_investment_id: sip.id,
+        type: "SIP" as const,
+        name: sip.fund_name,
+        amount: 0, // Zero amount for skipped month
+        date: formattedDate,
+        notes: "Skipped month investment"
+      }));
+
+      if (skippedEntries.length > 0) {
+        const { error } = await supabase
+          .from("investments")
+          .insert(skippedEntries);
+
+        if (error) throw error;
+
+        // Refresh investments
+        await fetchInvestments();
+      }
+
+      setIsSkipMonthDialogOpen(false);
+
+    } catch (error) {
+      console.error("Error skipping month investment:", error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -292,18 +308,6 @@ export function InvestmentSection() {
       loadData();
     }
   }, [user]);
-
-  // Check for automatic entries only once after initial data is loaded
-  useEffect(() => {
-    if (
-      !isInitialMount.current &&
-      investments.length > 0 &&
-      sipInvestments.length > 0 &&
-      !hasCheckedAutoEntries.current
-    ) {
-      addAutomaticSipEntries();
-    }
-  }, [investments, sipInvestments]);
 
   // Format currency
   const formatCurrency = (amount: number) => {
@@ -389,10 +393,23 @@ export function InvestmentSection() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>SIP Investments</CardTitle>
-              <CardDescription>
-                Your active systematic investment plans
-              </CardDescription>
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+                <div>
+                  <CardTitle>SIP Investments</CardTitle>
+                  <CardDescription>
+                    Your active systematic investment plans
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsSkipMonthDialogOpen(true)}
+                  className="flex items-center gap-1"
+                >
+                  <Ban className="h-4 w-4" />
+                  Skip This Month
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {isLoading ? (
@@ -474,9 +491,14 @@ export function InvestmentSection() {
                             <p className="text-xl font-bold">
                               {formatCurrency(sip.amount)}
                             </p>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">
-                              Monthly investment
-                            </p>
+                            <div className="flex flex-col space-y-1">
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                Monthly investment
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
+                                Deducted on 25th of each month
+                              </p>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -661,6 +683,32 @@ export function InvestmentSection() {
           </Card>
         </div>
       </div>
+
+      {/* Skip Month Dialog */}
+      <Dialog open={isSkipMonthDialogOpen} onOpenChange={setIsSkipMonthDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Skip This Month's Investment</DialogTitle>
+            <DialogDescription>
+              This will create zero-amount entries for all your active SIPs for the current month.
+              Are you sure you want to skip this month's investment?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 sm:justify-between">
+            <Button variant="outline" onClick={() => setIsSkipMonthDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={skipCurrentMonthInvestment}
+              className="flex items-center gap-1"
+            >
+              <Ban className="h-4 w-4" />
+              Skip This Month
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
