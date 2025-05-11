@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -39,6 +39,9 @@ export function EPFSection() {
   const [totalContribution, setTotalContribution] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const { user } = useAuthStore();
+  
+  // Add a ref to track if we've already checked for automatic contributions
+  const hasCheckedThisMonth = useRef(false);
 
   // Function to fetch EPF contributions
   const fetchContributions = async () => {
@@ -73,12 +76,18 @@ export function EPFSection() {
   const addAutomaticContribution = async () => {
     if (!user) return;
 
+    // If we've already checked for this month in this session, don't check again
+    if (hasCheckedThisMonth.current) return;
+    
     const today = new Date();
     const currentMonth = startOfMonth(today);
     const isAfterFifth = getDate(today) >= 5;
 
     // Check if we should add an automatic contribution (on or after the 5th)
     if (!isAfterFifth) return;
+
+    // Mark that we've checked for this month
+    hasCheckedThisMonth.current = true;
 
     // Check if there's already a contribution for this month
     const hasContributionThisMonth = contributions.some((contribution) => {
@@ -113,6 +122,8 @@ export function EPFSection() {
 
   useEffect(() => {
     fetchContributions();
+    // Reset the check flag when the user changes
+    hasCheckedThisMonth.current = false;
   }, [user]);
 
   useEffect(() => {
