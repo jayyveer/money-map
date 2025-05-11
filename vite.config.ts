@@ -8,11 +8,31 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      strategies: 'injectManifest',
-      srcDir: 'public',
-      filename: 'service-worker.js',
       injectRegister: 'auto',
-      includeAssets: ['**/*'],
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,json}'],
+        cleanupOutdatedCaches: true,
+        skipWaiting: true,
+        clientsClaim: true,
+        navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/api\//],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/cdn-icons-png\.flaticon\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'icon-cache',
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
+              }
+            }
+          }
+        ]
+      },
+      devOptions: {
+        enabled: true
+      },
       manifest: {
         name: 'MoneyMap Finance Tracker',
         short_name: 'MoneyMap',
