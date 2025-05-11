@@ -4,6 +4,7 @@ import { Wallet, LogOut, PieChart, Landmark, TrendingUp, CreditCard, BarChart3, 
 import { useAuthStore } from '@/lib/store'
 import { supabase } from '@/lib/supabase'
 import { api } from '@/lib/api'
+import { PWAInstallPrompt } from '@/components/ui/pwa-install-prompt'
 
 export function DashboardLayout() {
   const navigate = useNavigate()
@@ -177,6 +178,9 @@ export function DashboardLayout() {
           <Outlet />
         </div>
       </div>
+
+      {/* PWA Install Prompt */}
+      <PWAInstallPrompt />
     </div>
   )
 }
